@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorldGame2 MVP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="auth-screen" class="screen active">
+        <div class="panel">
+          <h1>WorldGame2</h1>
+          <p class="muted">Минимальный MVP для 3D браузерной игры.</p>
+
+          <form id="auth-form" class="stack">
+            <label>
+              Логин
+              <input id="username" type="text" minlength="3" required />
+            </label>
+            <label>
+              Пароль
+              <input id="password" type="password" minlength="4" required />
+            </label>
+            <div class="row">
+              <button type="button" id="login-btn">Войти</button>
+              <button type="button" id="register-btn" class="secondary">Регистрация</button>
+            </div>
+          </form>
+          <p id="auth-message" class="message"></p>
+        </div>
+      </section>
+
+      <section id="creator-screen" class="screen">
+        <div class="panel wide">
+          <h2>Создание персонажа</h2>
+          <p class="muted">Выбери базовый цвет, одежду и прическу.</p>
+          <div class="creator-layout">
+            <div class="stack">
+              <label>
+                Цвет персонажа
+                <input id="body-color" type="color" value="#f3be8e" />
+              </label>
+              <label>
+                Цвет одежды
+                <input id="cloth-color" type="color" value="#4a90e2" />
+              </label>
+
+              <fieldset>
+                <legend>Прическа (1 из 3)</legend>
+                <label><input type="radio" name="hair" value="short" checked /> Короткая</label>
+                <label><input type="radio" name="hair" value="spike" /> Колючая</label>
+                <label><input type="radio" name="hair" value="bun" /> Пучок</label>
+              </fieldset>
+
+              <button id="start-game-btn">Войти в мир</button>
+            </div>
+            <div>
+              <canvas id="creator-canvas" aria-label="Превью персонажа"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="world-screen" class="screen">
+        <div class="hud panel">
+          <h2>3D Мир</h2>
+          <p class="muted">WASD: движение персонажа по 4 векторам.</p>
+          <p id="coords">X: 0.0, Z: 0.0</p>
+        </div>
+        <canvas id="world-canvas" aria-label="Игровой мир"></canvas>
+      </section>
+    </main>
+
+    <script src="https://unpkg.com/three@0.163.0/build/three.min.js"></script>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
