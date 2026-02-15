@@ -6,6 +6,7 @@ const screens = {
 
 const authMessage = document.getElementById('auth-message');
 const coordsEl = document.getElementById('coords');
+const moneyEl = document.getElementById('money');
 const usernameInput = document.getElementById('username');
 const passwordInput = document.getElementById('password');
 const bodyColorInput = document.getElementById('body-color');
@@ -19,6 +20,7 @@ const defaultCharacter = {
 
 const state = {
   currentUser: null,
+  money: 0,
   character: { ...defaultCharacter }
 };
 
@@ -42,6 +44,17 @@ function saveUsers(users) {
 function getSelectedHair() {
   const checked = document.querySelector('input[name="hair"]:checked');
   return checked?.value ?? 'short';
+}
+
+
+function validateCredentials(username, password) {
+  if (username.length < 3) {
+    return 'Логин должен быть минимум 3 символа.';
+  }
+  if (password.length < 4) {
+    return 'Пароль должен быть минимум 4 символа.';
+  }
+  return '';
 }
 
 function buildCharacterMesh({ bodyColor, clothColor, hair }) {
@@ -192,13 +205,24 @@ function initWorldScene() {
   const player = buildCharacterMesh(state.character);
   scene.add(player);
 
+  const worldSize = 80;
+  const buildCellSize = 4;
+  const houseCost = 100;
+
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80),
+    new THREE.PlaneGeometry(worldSize, worldSize),
     new THREE.MeshStandardMaterial({ color: '#74ad5d', roughness: 0.95 })
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
+  ground.name = 'ground';
   scene.add(ground);
+
+  const grid = new THREE.GridHelper(worldSize, worldSize / buildCellSize, 0x2f5236, 0x2f5236);
+  grid.position.y = 0.05;
+  grid.material.opacity = 0.55;
+  grid.material.transparent = true;
+  scene.add(grid);
 
   for (let i = 0; i < 34; i += 1) {
     const rock = new THREE.Mesh(
@@ -213,8 +237,83 @@ function initWorldScene() {
 
   setupLights(scene);
 
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const builtCells = new Set();
+
+  const getCellKey = (x, z) => `${x}:${z}`;
+
+  const createHouse = (x, z) => {
+    const house = new THREE.Group();
+
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 2.2, 2.5),
+      new THREE.MeshStandardMaterial({ color: '#ccb395' })
+    );
+    base.position.y = 1.1;
+
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(2.2, 1.6, 4),
+      new THREE.MeshStandardMaterial({ color: '#90433a' })
+    );
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = 3.0;
+
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 1.1, 0.08),
+      new THREE.MeshStandardMaterial({ color: '#55382b' })
+    );
+    door.position.set(0, 0.6, 1.29);
+
+    house.add(base, roof, door);
+    house.position.set(x, 0, z);
+    house.traverse((node) => {
+      node.castShadow = true;
+      node.receiveShadow = true;
+    });
+
+    scene.add(house);
+  };
+
+  const onWorldClick = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(pointer, camera);
+    const hit = raycaster.intersectObject(ground)[0];
+    if (!hit) return;
+
+    const snappedX = Math.round(hit.point.x / buildCellSize) * buildCellSize;
+    const snappedZ = Math.round(hit.point.z / buildCellSize) * buildCellSize;
+
+    if (Math.abs(snappedX) > worldSize / 2 - buildCellSize || Math.abs(snappedZ) > worldSize / 2 - buildCellSize) {
+      return;
+    }
+
+    const key = getCellKey(snappedX, snappedZ);
+    if (builtCells.has(key) || state.money < houseCost) {
+      return;
+    }
+
+    builtCells.add(key);
+    createHouse(snappedX, snappedZ);
+    state.money -= houseCost;
+    updateMoneyHud();
+
+    const users = getUsers();
+    if (users[state.currentUser]) {
+      users[state.currentUser].money = state.money;
+      saveUsers(users);
+    }
+  };
+
+  canvas.addEventListener('click', onWorldClick);
+
   const keys = new Set();
   const speed = 3.5;
+  const passiveIncomePerSecond = 12;
+  let moneyBuffer = 0;
   const bounds = 35;
 
   const directionMap = {
@@ -239,6 +338,13 @@ function initWorldScene() {
     const dt = Math.min((now - prev) / 1000, 0.05);
     prev = now;
 
+    moneyBuffer += passiveIncomePerSecond * dt;
+    if (moneyBuffer >= 1) {
+      const gained = Math.floor(moneyBuffer);
+      moneyBuffer -= gained;
+      state.money += gained;
+    }
+
     const activeKey = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].find((code) => keys.has(code));
     if (activeKey) {
       const dir = directionMap[activeKey].clone().normalize();
@@ -251,6 +357,7 @@ function initWorldScene() {
     camera.position.set(player.position.x + 9, player.position.y + 12, player.position.z + 9);
     camera.lookAt(player.position.x, player.position.y + 1.8, player.position.z);
     coordsEl.textContent = `X: ${player.position.x.toFixed(1)}, Z: ${player.position.z.toFixed(1)}`;
+    updateMoneyHud();
 
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
@@ -275,14 +382,27 @@ function goToCreator() {
   creatorScene?.resize();
 }
 
+function updateMoneyHud() {
+  if (moneyEl) {
+    moneyEl.textContent = `Деньги: ${state.money} монет`;
+  }
+}
+
 document.getElementById('login-btn').addEventListener('click', () => {
   const username = usernameInput.value.trim();
   const password = passwordInput.value;
+  const credentialError = validateCredentials(username, password);
+  if (credentialError) {
+    authMessage.textContent = credentialError;
+    return;
+  }
+
   const users = getUsers();
 
   if (users[username]?.password === password) {
     state.currentUser = username;
     state.character = users[username].character ?? { ...defaultCharacter };
+    state.money = users[username].money ?? 200;
     bodyColorInput.value = state.character.bodyColor;
     clothColorInput.value = state.character.clothColor;
     const match = document.querySelector(`input[name="hair"][value="${state.character.hair}"]`);
@@ -304,15 +424,22 @@ document.getElementById('register-btn').addEventListener('click', () => {
     return;
   }
 
+  const credentialError = validateCredentials(username, password);
+  if (credentialError) {
+    authMessage.textContent = credentialError;
+    return;
+  }
+
   const users = getUsers();
   if (users[username]) {
     authMessage.textContent = 'Пользователь уже существует.';
     return;
   }
 
-  users[username] = { password, character: { ...defaultCharacter } };
+  users[username] = { password, character: { ...defaultCharacter }, money: 200 };
   saveUsers(users);
   state.currentUser = username;
+  state.money = 200;
   authMessage.textContent = 'Регистрация успешна. Настрой персонажа.';
   goToCreator();
 });
@@ -331,6 +458,7 @@ document.getElementById('start-game-btn').addEventListener('click', () => {
   const users = getUsers();
   if (users[state.currentUser]) {
     users[state.currentUser].character = state.character;
+    users[state.currentUser].money = state.money;
     saveUsers(users);
   }
 
